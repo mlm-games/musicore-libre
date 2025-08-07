@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:music_score_viewer/screens/score_viewer_screen.dart';
+import 'package:flutter_musicore/screens/score_viewer_screen.dart';
 
 void main() {
   // Required for InAppWebView to work correctly

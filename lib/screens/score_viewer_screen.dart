@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package_model/app_state.dart';
-import 'package:music_score_viewer/providers/score_providers.dart';
+import 'package:flutter_musicore/models/app_state.dart';  
+import 'package:flutter_musicore/providers/score_providers.dart';
 
 class ScoreViewerScreen extends ConsumerWidget {
   const ScoreViewerScreen({super.key});

@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package_model/app_state.dart';
+import 'package:flutter_musicore/models/app_state.dart';  
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +24,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xml', 'musicxml'],
+      allowedExtensions: ['xml', 'musicxml', 'mxl'],
     );
 
     if (result != null && result.files.single.path != null) {
