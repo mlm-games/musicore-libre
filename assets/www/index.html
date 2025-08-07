@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="js/opensheetmusicdisplay.min.js"></script>
+    <style>
+        /* Ensures the score takes up the full body with no weird margins */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="osmd-container"></div>
+    <script>
+        let osmd;
+        let playbackInterval;
+
+        // Initialize OSMD when the window loads
+        window.onload = function () {
+            osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", {
+                autoResize: true,
+                backend: "svg",
+                drawTitle: true,
+            });
+        };
+
+        // Fns called from Flutter
+
+        async function loadMusicXML(xmlData) {
+            if (!osmd) return;
+            try {
+                await osmd.load(xmlData);
+                osmd.render();
+                osmd.cursor.show(); // Show the cursor but don't move it yet
+            } catch (e) {
+                console.error("Error loading MusicXML:", e);
+                // You can add communication back to Flutter here if needed
+            }
+        }
+
+        function setZoom(zoomLevel) {
+            if (!osmd) return;
+            osmd.zoom = zoomLevel;
+            osmd.render();
+        }
+
+        function startPlayback() {
+            if (!osmd) return;
+            clearInterval(playbackInterval); // Stop any previous playback
+            playbackInterval = setInterval(() => {
+                osmd.cursor.next();
+                if (osmd.cursor.Iterator.EndReached) {
+                    stopPlayback();
+                }
+            }, 400); // Adjust speed as needed
+        }
+
+        function pausePlayback() {
+            if (!osmd) return;
+            clearInterval(playbackInterval);
+        }
+
+        function stopPlayback() {
+            if (!osmd) return;
+            clearInterval(playbackInterval);
+            osmd.cursor.reset();
+        }
+    </script>
+</body>
+
+</html>
