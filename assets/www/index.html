@@ -32,7 +32,7 @@
 
             html,
             body {
-                background-color: #121212;
+                background-color: #181a1b;
             }
         }
 
@@ -55,12 +55,18 @@
             .loading,
             .error {
                 background: rgba(30, 30, 30, 0.95);
-                color: #fff;
+                color: #f5f5f5;
             }
         }
 
         .error {
             color: #d32f2f;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .error {
+                color: #ff6b6b;
+            }
         }
 
         /* Smooth transitions */
@@ -81,13 +87,19 @@
         let isInitialized = false;
         let playbackSpeed = 1.0;
         let followCursor = true;
+        let isDarkMode = false;
+
+        // Check initial dark mode state
+        if (window.matchMedia) {
+            isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
 
         // Initialize OSMD
         function initializeOSMD() {
             if (isInitialized) return;
 
             try {
-                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", {
+                const options = {
                     autoResize: true,
                     backend: "svg",
                     drawTitle: true,
@@ -98,30 +110,100 @@
                     drawingParameters: "compact",
                     renderSingleHorizontalStaffline: false,
                     coloringEnabled: true,
-                    defaultColorNotehead: "#000000",
-                    defaultColorStem: "#000000",
-                    defaultColorRest: "#000000",
-                    defaultColorLabel: "#000000",
-                    defaultColorTitle: "#000000",
-                    pageBackgroundColor: "#ffffff00",
                     pageFormat: "Endless",
                     zoom: 1.0,
-                    followCursor: true,
+                    followCursor: true
+                };
+
+                // Apply initial color scheme
+                if (isDarkMode) {
+                    options.defaultColorMusic = "#f5f5f5";
+                    options.pageBackgroundColor = "#181a1b00";
+                } else {
+                    options.defaultColorMusic = "#000000";
+                    options.pageBackgroundColor = "#ffffff00";
+                }
+
+                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", options);
+
+                // Set cursor options based on theme
+                osmd.setOptions({
                     cursorsOptions: [
                         {
                             type: 0,
-                            color: "#673AB7",
+                            color: isDarkMode ? "#ffd54f" : "#673ab7",
                             alpha: 0.6,
                             follow: true
                         }
                     ]
                 });
 
+                // Apply additional color rules
+                applyColorRules(isDarkMode);
+
                 osmd.setLogLevel("warn");
                 isInitialized = true;
             } catch (e) {
                 console.error("Failed to initialize OSMD:", e);
                 showError("Failed to initialize music renderer");
+            }
+        }
+
+        // Apply color rules based on theme
+        function applyColorRules(isDark) {
+            if (!osmd || !osmd.EngravingRules) return;
+
+            if (isDark) {
+                // Dark mode colors
+                osmd.EngravingRules.StaffLineColor = "#cccccc";
+                osmd.EngravingRules.LedgerLineColorDefault = "#bbbbbb";
+                osmd.EngravingRules.PageBackgroundColor = "#181a1b";
+            } else {
+                // Light mode colors
+                osmd.EngravingRules.StaffLineColor = "#222222";
+                osmd.EngravingRules.LedgerLineColorDefault = "#333333";
+                osmd.EngravingRules.PageBackgroundColor = "#fafafa";
+            }
+        }
+
+        // Update colors based on theme
+        function updateColors(isDark) {
+            if (!osmd) return;
+
+            isDarkMode = isDark;
+
+            if (isDark) {
+                osmd.setOptions({
+                    defaultColorMusic: "#f5f5f5",
+                    pageBackgroundColor: "#181a1b00",
+                    cursorsOptions: [
+                        {
+                            type: 0,
+                            color: "#ffd54f",
+                            alpha: 0.6,
+                            follow: true
+                        }
+                    ]
+                });
+            } else {
+                osmd.setOptions({
+                    defaultColorMusic: "#000000",
+                    pageBackgroundColor: "#ffffff00",
+                    cursorsOptions: [
+                        {
+                            type: 0,
+                            color: "#673ab7",
+                            alpha: 0.6,
+                            follow: true
+                        }
+                    ]
+                });
+            }
+
+            applyColorRules(isDark);
+
+            if (osmd.GraphicSheet) {
+                osmd.render();
             }
         }
 
@@ -308,27 +390,9 @@
             e.preventDefault();
         });
 
-        // Handle dark mode
+        // Handle dark mode changes
         if (window.matchMedia) {
             const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-            function updateColors(isDark) {
-                if (!osmd) return;
-
-                const color = isDark ? "#FFFFFF" : "#000000";
-                osmd.setOptions({
-                    defaultColorNotehead: color,
-                    defaultColorStem: color,
-                    defaultColorRest: color,
-                    defaultColorLabel: color,
-                    defaultColorTitle: color,
-                });
-
-                if (osmd.GraphicSheet) {
-                    osmd.render();
-                }
-            }
-
             darkModeQuery.addListener((e) => updateColors(e.matches));
         }
     </script>
