@@ -1,4 +1,4 @@
-package com.example.flutter_musicore
+package com.example.musicore
 
 import io.flutter.embedding.android.FlutterActivity
 

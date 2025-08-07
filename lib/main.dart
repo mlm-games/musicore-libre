@@ -1,27 +1,50 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_musicore/screens/score_viewer_screen.dart';
+import 'package:musicore/screens/score_viewer_screen.dart';
 
 void main() {
-  // Required for InAppWebView to work correctly
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: MyApp()));
+  
+  // Allow both portrait and landscape orientations
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  
+  runApp(const ProviderScope(child: MusicoreApp()));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MusicoreApp extends StatelessWidget {
+  const MusicoreApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Music Score Viewer',
+      title: 'Musicore',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          elevation: 2,
+        ),
       ),
-      darkTheme: ThemeData.dark().copyWith(
-        primaryColor: Colors.indigo.shade300,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          elevation: 2,
+        ),
       ),
       themeMode: ThemeMode.system,
       home: const ScoreViewerScreen(),

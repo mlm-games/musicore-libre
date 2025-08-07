@@ -1,6 +1,6 @@
 {
-    "name": "flutter_musicore",
-    "short_name": "flutter_musicore",
+    "name": "musicore",
+    "short_name": "musicore",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

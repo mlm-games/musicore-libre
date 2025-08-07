@@ -1,76 +1,335 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Music Score Viewer</title>
     <script src="js/opensheetmusicdisplay.min.js"></script>
     <style>
-        /* Ensures the score takes up the full body with no weird margins */
+        * {
+            box-sizing: border-box;
+        }
+
         html,
         body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
+            overflow: auto;
+            background-color: #fafafa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        #osmd-container {
+            width: 100%;
+            min-height: 100%;
+            padding: 16px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+
+            html,
+            body {
+                background-color: #121212;
+            }
+        }
+
+        .loading,
+        .error {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+
+            .loading,
+            .error {
+                background: rgba(30, 30, 30, 0.95);
+                color: #fff;
+            }
+        }
+
+        .error {
+            color: #d32f2f;
+        }
+
+        /* Smooth transitions */
+        #osmd-container svg {
+            transition: transform 0.2s ease-out;
         }
     </style>
 </head>
 
 <body>
     <div id="osmd-container"></div>
+    <div class="loading" id="loading">Loading score...</div>
+    <div class="error" id="error"></div>
+
     <script>
-        let osmd;
-        let playbackInterval;
+        let osmd = null;
+        let playbackInterval = null;
+        let isInitialized = false;
+        let playbackSpeed = 1.0;
+        let followCursor = true;
 
-        // Initialize OSMD when the window loads
-        window.onload = function () {
-            osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", {
-                autoResize: true,
-                backend: "svg",
-                drawTitle: true,
-            });
-        };
+        // Initialize OSMD
+        function initializeOSMD() {
+            if (isInitialized) return;
 
-        // Fns called from Flutter
-
-        async function loadMusicXML(xmlData) {
-            if (!osmd) return;
             try {
-                await osmd.load(xmlData);
-                osmd.render();
-                osmd.cursor.show(); // Show the cursor but don't move it yet
+                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", {
+                    autoResize: true,
+                    backend: "svg",
+                    drawTitle: true,
+                    drawSubtitle: true,
+                    drawComposer: true,
+                    drawLyricist: false,
+                    drawPartNames: true,
+                    drawingParameters: "compact",
+                    renderSingleHorizontalStaffline: false,
+                    coloringEnabled: true,
+                    defaultColorNotehead: "#000000",
+                    defaultColorStem: "#000000",
+                    defaultColorRest: "#000000",
+                    defaultColorLabel: "#000000",
+                    defaultColorTitle: "#000000",
+                    pageBackgroundColor: "#ffffff00",
+                    pageFormat: "Endless",
+                    zoom: 1.0,
+                    followCursor: true,
+                    cursorsOptions: [
+                        {
+                            type: 0,
+                            color: "#673AB7",
+                            alpha: 0.6,
+                            follow: true
+                        }
+                    ]
+                });
+
+                osmd.setLogLevel("warn");
+                isInitialized = true;
             } catch (e) {
-                console.error("Error loading MusicXML:", e);
-                // You can add communication back to Flutter here if needed
+                console.error("Failed to initialize OSMD:", e);
+                showError("Failed to initialize music renderer");
             }
         }
 
-        function setZoom(zoomLevel) {
-            if (!osmd) return;
-            osmd.zoom = zoomLevel;
-            osmd.render();
+        // UI helpers
+        function showLoading() {
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("error").style.display = "none";
         }
 
-        function startPlayback() {
-            if (!osmd) return;
-            clearInterval(playbackInterval); // Stop any previous playback
-            playbackInterval = setInterval(() => {
-                osmd.cursor.next();
-                if (osmd.cursor.Iterator.EndReached) {
-                    stopPlayback();
+        function hideLoading() {
+            document.getElementById("loading").style.display = "none";
+        }
+
+        function showError(message) {
+            document.getElementById("error").textContent = message;
+            document.getElementById("error").style.display = "block";
+            hideLoading();
+        }
+
+        function hideError() {
+            document.getElementById("error").style.display = "none";
+        }
+
+        // Load MusicXML data
+        async function loadMusicXML(xmlData) {
+            if (!osmd) {
+                initializeOSMD();
+            }
+
+            if (!osmd) {
+                console.error("OSMD not initialized");
+                return;
+            }
+
+            showLoading();
+            hideError();
+            stopPlayback();
+
+            try {
+                await osmd.load(xmlData);
+                await osmd.render();
+
+                if (osmd.cursor) {
+                    osmd.cursor.show();
+                    osmd.cursor.reset();
                 }
-            }, 400); // Adjust speed as needed
+
+                hideLoading();
+
+                // Notify Flutter that loading is complete
+                if (window.flutter_inappwebview) {
+                    window.flutter_inappwebview.callHandler('loadingComplete');
+                }
+            } catch (e) {
+                console.error("Error loading MusicXML:", e);
+                showError("Failed to load music score: " + e.message);
+            }
+        }
+
+        // Zoom control
+        function setZoom(zoomLevel) {
+            if (!osmd || !osmd.GraphicSheet) return;
+
+            try {
+                osmd.zoom = zoomLevel;
+                osmd.render();
+            } catch (e) {
+                console.error("Error setting zoom:", e);
+            }
+        }
+
+        // Playback speed control
+        function setPlaybackSpeed(speed) {
+            playbackSpeed = speed;
+        }
+
+        // Follow cursor control
+        function setFollowCursor(follow) {
+            followCursor = follow;
+            if (osmd && osmd.cursor) {
+                osmd.FollowCursor = follow;
+            }
+        }
+
+        // Playback controls
+        function startPlayback() {
+            if (!osmd || !osmd.cursor) return;
+
+            stopPlayback();
+
+            try {
+                if (osmd.cursor.Iterator.EndReached) {
+                    osmd.cursor.reset();
+                }
+
+                osmd.cursor.show();
+
+                const baseInterval = 300; // Base interval in ms
+                const interval = baseInterval / playbackSpeed;
+
+                playbackInterval = setInterval(() => {
+                    if (osmd.cursor.Iterator.EndReached) {
+                        stopPlayback();
+                        // Notify Flutter that playback has ended
+                        if (window.flutter_inappwebview) {
+                            window.flutter_inappwebview.callHandler('playbackEnded');
+                        }
+                    } else {
+                        osmd.cursor.next();
+
+                        // Auto-scroll to follow cursor if enabled
+                        if (followCursor && osmd.cursor.cursorElement) {
+                            osmd.cursor.cursorElement.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'center',
+                                inline: 'center'
+                            });
+                        }
+                    }
+                }, interval);
+            } catch (e) {
+                console.error("Error starting playback:", e);
+                stopPlayback();
+            }
         }
 
         function pausePlayback() {
-            if (!osmd) return;
-            clearInterval(playbackInterval);
+            if (playbackInterval) {
+                clearInterval(playbackInterval);
+                playbackInterval = null;
+            }
         }
 
         function stopPlayback() {
-            if (!osmd) return;
-            clearInterval(playbackInterval);
-            osmd.cursor.reset();
+            pausePlayback();
+
+            if (osmd && osmd.cursor) {
+                try {
+                    osmd.cursor.reset();
+                    osmd.cursor.show();
+                } catch (e) {
+                    console.error("Error resetting cursor:", e);
+                }
+            }
+        }
+
+        function resetScore() {
+            stopPlayback();
+
+            if (osmd) {
+                try {
+                    osmd.clear();
+                } catch (e) {
+                    console.error("Error clearing score:", e);
+                }
+            }
+
+            hideError();
+            hideLoading();
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            initializeOSMD();
+        });
+
+        // Handle resize events
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (osmd && osmd.GraphicSheet) {
+                    try {
+                        osmd.render();
+                    } catch (e) {
+                        console.error("Error on resize:", e);
+                    }
+                }
+            }, 250);
+        });
+
+        // Prevent default touch behaviors for better scrolling
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle dark mode
+        if (window.matchMedia) {
+            const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+            function updateColors(isDark) {
+                if (!osmd) return;
+
+                const color = isDark ? "#FFFFFF" : "#000000";
+                osmd.setOptions({
+                    defaultColorNotehead: color,
+                    defaultColorStem: color,
+                    defaultColorRest: color,
+                    defaultColorLabel: color,
+                    defaultColorTitle: color,
+                });
+
+                if (osmd.GraphicSheet) {
+                    osmd.render();
+                }
+            }
+
+            darkModeQuery.addListener((e) => updateColors(e.matches));
         }
     </script>
 </body>
