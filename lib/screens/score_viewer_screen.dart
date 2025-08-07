@@ -53,11 +53,15 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        appState.followCursor ? Icons.gps_fixed : Icons.gps_not_fixed,
+                        appState.followCursor
+                            ? Icons.gps_fixed
+                            : Icons.gps_not_fixed,
                         size: 20,
                       ),
                       const SizedBox(width: 12),
-                      Text(appState.followCursor ? 'Disable Follow Cursor' : 'Enable Follow Cursor'),
+                      Text(appState.followCursor
+                          ? 'Disable Follow Cursor'
+                          : 'Enable Follow Cursor'),
                     ],
                   ),
                 ),
@@ -96,7 +100,7 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
             ),
             onWebViewCreated: (controller) {
               ref.read(webViewControllerProvider.notifier).state = controller;
-              
+
               // Set up JavaScript handlers
               controller.addJavaScriptHandler(
                 handlerName: 'playbackEnded',
@@ -155,7 +159,8 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                       ),
                       const SizedBox(height: 16),
                       FilledButton.tonal(
-                        onPressed: () => ref.read(appStateProvider.notifier).loadFile(),
+                        onPressed: () =>
+                            ref.read(appStateProvider.notifier).loadFile(),
                         child: const Text('Try Again'),
                       ),
                     ],
@@ -163,7 +168,9 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                 ),
               ),
             ),
-          if (!appState.isScoreLoaded && !appState.isLoading && appState.errorMessage == null)
+          if (!appState.isScoreLoaded &&
+              !appState.isLoading &&
+              appState.errorMessage == null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -189,7 +196,8 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                   ),
                   const SizedBox(height: 32),
                   FilledButton.icon(
-                    onPressed: () => ref.read(appStateProvider.notifier).loadFile(),
+                    onPressed: () =>
+                        ref.read(appStateProvider.notifier).loadFile(),
                     icon: const Icon(Icons.folder_open),
                     label: const Text('Open File'),
                   ),
@@ -205,11 +213,14 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: appState.isScoreLoaded ? _buildControlBar(context, ref, appState) : null,
+      bottomNavigationBar: appState.isScoreLoaded
+          ? _buildControlBar(context, ref, appState)
+          : null,
     );
   }
 
-  Widget _buildControlBar(BuildContext context, WidgetRef ref, AppState appState) {
+  Widget _buildControlBar(
+      BuildContext context, WidgetRef ref, AppState appState) {
     final notifier = ref.read(appStateProvider.notifier);
     final theme = Theme.of(context);
 
@@ -236,9 +247,8 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                 children: [
                   _ControlButton(
                     icon: Icons.zoom_out,
-                    onPressed: appState.zoomLevel > 0.2
-                        ? notifier.zoomOut
-                        : null,
+                    onPressed:
+                        appState.zoomLevel > 0.2 ? notifier.zoomOut : null,
                     tooltip: 'Zoom Out',
                   ),
                   _ControlButton(
@@ -260,9 +270,8 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                   ),
                   _ControlButton(
                     icon: Icons.zoom_in,
-                    onPressed: appState.zoomLevel < 5.0
-                        ? notifier.zoomIn
-                        : null,
+                    onPressed:
+                        appState.zoomLevel < 5.0 ? notifier.zoomIn : null,
                     tooltip: 'Zoom In',
                   ),
                 ],
@@ -328,7 +337,7 @@ class _PlayPauseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,

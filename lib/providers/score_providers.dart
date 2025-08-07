@@ -6,22 +6,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as path;
 
-final webViewControllerProvider = StateProvider<InAppWebViewController?>((ref) => null);
+final webViewControllerProvider =
+    StateProvider<InAppWebViewController?>((ref) => null);
 
-final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) {
+final appStateProvider =
+    StateNotifierProvider<AppStateNotifier, AppState>((ref) {
   return AppStateNotifier(ref);
 });
 
 class AppStateNotifier extends StateNotifier<AppState> {
   final Ref _ref;
-  
+
   AppStateNotifier(this._ref) : super(const AppState());
 
-  InAppWebViewController? get _webController => _ref.read(webViewControllerProvider);
+  InAppWebViewController? get _webController =>
+      _ref.read(webViewControllerProvider);
 
   Future<void> loadFile() async {
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -49,7 +52,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
       }
 
       await _loadXmlIntoWebView(xmlString);
-      
+
       state = state.copyWith(
         isLoading: false,
         isScoreLoaded: true,
@@ -68,43 +71,41 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
   Future<String> _extractXmlFromMxl(List<int> bytes) async {
     final archive = ZipDecoder().decodeBytes(bytes);
-    
+
     // Look for the main score file
     for (final file in archive) {
-      if (file.name.endsWith('.xml') && 
+      if (file.name.endsWith('.xml') &&
           !file.name.startsWith('META-INF/') &&
           !file.name.startsWith('__MACOSX/')) {
         return String.fromCharCodes(file.content);
       }
     }
-    
+
     throw Exception('No valid MusicXML file found in archive');
   }
 
   Future<void> _loadXmlIntoWebView(String xmlString) async {
-  // Wait a bit to ensure WebView is ready
-  await Future.delayed(const Duration(milliseconds: 500));
-  
-  // Escape the XML string for safe JavaScript injection
-  final escapedXml = xmlString
-      .replaceAll(r'\', r'\\')
-      .replaceAll('"', r'\"')
-      .replaceAll('\n', r'\n')
-      .replaceAll('\r', r'\r')
-      .replaceAll('\t', r'\t');
+    // Wait a bit to ensure WebView is ready
+    await Future.delayed(const Duration(milliseconds: 500));
 
-  // Use window.loadMusicXML which we defined globally
-  final result = await _webController?.evaluateJavascript(
-    source: 'window.loadMusicXML("$escapedXml");'
-  );
-  
-  print('Load result: $result');
-}
+    // Escape the XML string for safe JavaScript injection
+    final escapedXml = xmlString
+        .replaceAll(r'\', r'\\')
+        .replaceAll('"', r'\"')
+        .replaceAll('\n', r'\n')
+        .replaceAll('\r', r'\r')
+        .replaceAll('\t', r'\t');
 
+    // Use window.loadMusicXML which we defined globally
+    final result = await _webController?.evaluateJavascript(
+        source: 'window.loadMusicXML("$escapedXml");');
+
+    print('Load result: $result');
+  }
 
   void setZoom(double newZoom) {
     if (!state.isScoreLoaded) return;
-    
+
     final clampedZoom = newZoom.clamp(0.2, 5.0);
     state = state.copyWith(zoomLevel: clampedZoom);
     _webController?.evaluateJavascript(source: 'setZoom($clampedZoom);');
@@ -116,15 +117,17 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
   void setPlaybackSpeed(double speed) {
     if (!state.isScoreLoaded) return;
-    
+
     final clampedSpeed = speed.clamp(0.25, 2.0);
     state = state.copyWith(playbackSpeed: clampedSpeed);
-    _webController?.evaluateJavascript(source: 'setPlaybackSpeed($clampedSpeed);');
+    _webController?.evaluateJavascript(
+        source: 'setPlaybackSpeed($clampedSpeed);');
   }
 
   void toggleFollowCursor() {
     state = state.copyWith(followCursor: !state.followCursor);
-    _webController?.evaluateJavascript(source: 'setFollowCursor(${state.followCursor});');
+    _webController?.evaluateJavascript(
+        source: 'setFollowCursor(${state.followCursor});');
   }
 
   void startPlayback() {

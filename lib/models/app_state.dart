@@ -39,7 +39,8 @@ class AppState {
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
       playbackState: playbackState ?? this.playbackState,
       zoomLevel: zoomLevel ?? this.zoomLevel,
-      currentFileName: clearFileName ? null : currentFileName ?? this.currentFileName,
+      currentFileName:
+          clearFileName ? null : currentFileName ?? this.currentFileName,
       playbackSpeed: playbackSpeed ?? this.playbackSpeed,
       followCursor: followCursor ?? this.followCursor,
     );

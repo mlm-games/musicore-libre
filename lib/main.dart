@@ -5,14 +5,14 @@ import 'package:musicore/screens/score_viewer_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Allow both portrait and landscape orientations
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  
+
   runApp(const ProviderScope(child: MusicoreApp()));
 }
 
