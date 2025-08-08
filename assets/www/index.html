@@ -18,7 +18,7 @@
             width: 100%;
             height: 100%;
             overflow: auto;
-            background-color: #fafafa;
+            background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
@@ -32,7 +32,7 @@
 
             html,
             body {
-                background-color: #181a1b;
+                background-color: #1a1a1a;
             }
         }
 
@@ -48,14 +48,15 @@
             background: rgba(255, 255, 255, 0.95);
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
         }
 
         @media (prefers-color-scheme: dark) {
 
             .loading,
             .error {
-                background: rgba(30, 30, 30, 0.95);
-                color: #f5f5f5;
+                background: rgba(40, 40, 40, 0.95);
+                color: #e0e0e0;
             }
         }
 
@@ -67,11 +68,6 @@
             .error {
                 color: #ff6b6b;
             }
-        }
-
-        /* Smooth transitions */
-        #osmd-container svg {
-            transition: transform 0.2s ease-out;
         }
     </style>
 </head>
@@ -99,6 +95,8 @@
             if (isInitialized) return;
 
             try {
+                const container = document.getElementById("osmd-container");
+
                 const options = {
                     autoResize: true,
                     backend: "svg",
@@ -107,42 +105,31 @@
                     drawComposer: true,
                     drawLyricist: false,
                     drawPartNames: true,
-                    drawingParameters: "compact",
+                    drawingParameters: "default",
                     renderSingleHorizontalStaffline: false,
                     coloringEnabled: true,
                     pageFormat: "Endless",
-                    zoom: 1.0,
-                    followCursor: true
-                };
-
-                // Apply initial color scheme
-                if (isDarkMode) {
-                    options.defaultColorMusic = "#f5f5f5";
-                    options.pageBackgroundColor = "#181a1b00";
-                } else {
-                    options.defaultColorMusic = "#000000";
-                    options.pageBackgroundColor = "#ffffff00";
-                }
-
-                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmd-container", options);
-
-                // Set cursor options based on theme
-                osmd.setOptions({
+                    pageBackgroundColor: "#00000000", // transparent
+                    followCursor: true,
                     cursorsOptions: [
                         {
                             type: 0,
-                            color: isDarkMode ? "#ffd54f" : "#673ab7",
+                            color: isDarkMode ? "#64b5f6" : "#1976d2",
                             alpha: 0.6,
                             follow: true
                         }
                     ]
-                });
+                };
 
-                // Apply additional color rules
+                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, options);
+
+                // Apply initial color settings
                 applyColorRules(isDarkMode);
 
                 osmd.setLogLevel("warn");
                 isInitialized = true;
+
+                console.log("OSMD initialized successfully");
             } catch (e) {
                 console.error("Failed to initialize OSMD:", e);
                 showError("Failed to initialize music renderer");
@@ -153,16 +140,45 @@
         function applyColorRules(isDark) {
             if (!osmd || !osmd.EngravingRules) return;
 
-            if (isDark) {
-                // Dark mode colors
-                osmd.EngravingRules.StaffLineColor = "#cccccc";
-                osmd.EngravingRules.LedgerLineColorDefault = "#bbbbbb";
-                osmd.EngravingRules.PageBackgroundColor = "#181a1b";
-            } else {
-                // Light mode colors
-                osmd.EngravingRules.StaffLineColor = "#222222";
-                osmd.EngravingRules.LedgerLineColorDefault = "#333333";
-                osmd.EngravingRules.PageBackgroundColor = "#fafafa";
+            try {
+                if (isDark) {
+                    // Dark mode - better contrast colors
+                    osmd.EngravingRules.DefaultColorMusic = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorRest = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorStem = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorLabel = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorTitle = "#f5f5f5";
+                    osmd.EngravingRules.StaffLineColor = "#b8b8b8";
+                    osmd.EngravingRules.LedgerLineColorDefault = "#a8a8a8";
+                    osmd.EngravingRules.BarLineColor = "#b8b8b8";
+                    osmd.EngravingRules.PageBackgroundColor = "#1a1a1a";
+
+                    // Additional color rules for better visibility
+                    osmd.EngravingRules.DefaultColorNotehead = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorBeam = "#e8e8e8";
+                    osmd.EngravingRules.DefaultFillColorNotehead = "#e8e8e8";
+                    osmd.EngravingRules.DefaultColorCautionaryAccidental = "#d0d0d0";
+                    osmd.EngravingRules.DefaultColorGraceNote = "#d0d0d0";
+                } else {
+                    // Light mode - standard black notation
+                    osmd.EngravingRules.DefaultColorMusic = "#000000";
+                    osmd.EngravingRules.DefaultColorRest = "#000000";
+                    osmd.EngravingRules.DefaultColorStem = "#000000";
+                    osmd.EngravingRules.DefaultColorLabel = "#000000";
+                    osmd.EngravingRules.DefaultColorTitle = "#000000";
+                    osmd.EngravingRules.StaffLineColor = "#000000";
+                    osmd.EngravingRules.LedgerLineColorDefault = "#000000";
+                    osmd.EngravingRules.BarLineColor = "#000000";
+                    osmd.EngravingRules.PageBackgroundColor = "#ffffff";
+
+                    osmd.EngravingRules.DefaultColorNotehead = "#000000";
+                    osmd.EngravingRules.DefaultColorBeam = "#000000";
+                    osmd.EngravingRules.DefaultFillColorNotehead = "#000000";
+                    osmd.EngravingRules.DefaultColorCautionaryAccidental = "#000000";
+                    osmd.EngravingRules.DefaultColorGraceNote = "#000000";
+                }
+            } catch (e) {
+                console.error("Error applying color rules:", e);
             }
         }
 
@@ -172,32 +188,14 @@
 
             isDarkMode = isDark;
 
-            if (isDark) {
-                osmd.setOptions({
-                    defaultColorMusic: "#f5f5f5",
-                    pageBackgroundColor: "#181a1b00",
-                    cursorsOptions: [
-                        {
-                            type: 0,
-                            color: "#ffd54f",
-                            alpha: 0.6,
-                            follow: true
-                        }
-                    ]
-                });
-            } else {
-                osmd.setOptions({
-                    defaultColorMusic: "#000000",
-                    pageBackgroundColor: "#ffffff00",
-                    cursorsOptions: [
-                        {
-                            type: 0,
-                            color: "#673ab7",
-                            alpha: 0.6,
-                            follow: true
-                        }
-                    ]
-                });
+            // Update cursor color
+            if (osmd.cursor) {
+                osmd.cursor.CursorOptions = {
+                    type: 0,
+                    color: isDark ? "#64b5f6" : "#1976d2",
+                    alpha: 0.6,
+                    follow: followCursor
+                };
             }
 
             applyColorRules(isDark);
@@ -244,6 +242,10 @@
 
             try {
                 await osmd.load(xmlData);
+
+                // Apply color settings
+                applyColorRules(isDarkMode);
+
                 await osmd.render();
 
                 if (osmd.cursor) {
@@ -285,6 +287,72 @@
             followCursor = follow;
             if (osmd && osmd.cursor) {
                 osmd.FollowCursor = follow;
+                if (osmd.cursor.CursorOptions) {
+                    osmd.cursor.CursorOptions.follow = follow;
+                }
+            }
+        }
+
+        // Improved scroll cursor into view with better vertical handling
+        function scrollCursorIntoView() {
+            if (!followCursor || !osmd || !osmd.cursor) return;
+
+            try {
+                // Get the cursor element
+                let cursorElement = osmd.cursor.cursorElement;
+
+                // If no cursor element, try to find it in the SVG
+                if (!cursorElement) {
+                    const container = document.getElementById('osmd-container');
+                    const cursorLines = container.querySelectorAll('line[stroke*="#64b5f6"], line[stroke*="#1976d2"]');
+                    if (cursorLines.length > 0) {
+                        cursorElement = cursorLines[0];
+                    } else {
+                        return;
+                    }
+                }
+
+                // Get cursor and viewport positions
+                const cursorRect = cursorElement.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const viewportWidth = window.innerWidth;
+
+                // Calculate visible area with margins
+                const topMargin = 150; // Larger margin for portrait mode
+                const bottomMargin = 200; // Account for bottom controls
+                const sideMargin = 50;
+
+                const visibleTop = topMargin;
+                const visibleBottom = viewportHeight - bottomMargin;
+                const visibleLeft = sideMargin;
+                const visibleRight = viewportWidth - sideMargin;
+
+                // Check if cursor is outside visible area
+                const needsVerticalScroll = cursorRect.top < visibleTop || cursorRect.bottom > visibleBottom;
+                const needsHorizontalScroll = cursorRect.left < visibleLeft || cursorRect.right > visibleRight;
+
+                if (needsVerticalScroll || needsHorizontalScroll) {
+                    // Calculate target scroll position
+                    let scrollOptions = {
+                        behavior: 'smooth'
+                    };
+
+                    // For vertical scrolling in portrait mode, keep cursor in upper third of screen
+                    if (needsVerticalScroll) {
+                        const targetTop = window.pageYOffset + cursorRect.top - (viewportHeight * 0.3);
+                        scrollOptions.top = Math.max(0, targetTop);
+                    }
+
+                    // For horizontal scrolling
+                    if (needsHorizontalScroll) {
+                        const targetLeft = window.pageXOffset + cursorRect.left - (viewportWidth * 0.5);
+                        scrollOptions.left = Math.max(0, targetLeft);
+                    }
+
+                    window.scrollTo(scrollOptions);
+                }
+            } catch (e) {
+                console.error("Error scrolling cursor into view:", e);
             }
         }
 
@@ -295,7 +363,7 @@
             stopPlayback();
 
             try {
-                if (osmd.cursor.Iterator.EndReached) {
+                if (osmd.cursor.Iterator && osmd.cursor.Iterator.EndReached) {
                     osmd.cursor.reset();
                 }
 
@@ -304,24 +372,29 @@
                 const baseInterval = 300; // Base interval in ms
                 const interval = baseInterval / playbackSpeed;
 
-                playbackInterval = setInterval(() => {
-                    if (osmd.cursor.Iterator.EndReached) {
-                        stopPlayback();
-                        // Notify Flutter that playback has ended
-                        if (window.flutter_inappwebview) {
-                            window.flutter_inappwebview.callHandler('playbackEnded');
-                        }
-                    } else {
-                        osmd.cursor.next();
+                // Initial scroll to cursor position
+                setTimeout(scrollCursorIntoView, 100);
 
-                        // Auto-scroll to follow cursor if enabled
-                        if (followCursor && osmd.cursor.cursorElement) {
-                            osmd.cursor.cursorElement.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center',
-                                inline: 'center'
-                            });
+                playbackInterval = setInterval(() => {
+                    try {
+                        if (osmd.cursor.Iterator && osmd.cursor.Iterator.EndReached) {
+                            stopPlayback();
+                            // Notify Flutter that playback has ended
+                            if (window.flutter_inappwebview) {
+                                window.flutter_inappwebview.callHandler('playbackEnded');
+                            }
+                        } else {
+                            osmd.cursor.next();
+
+                            // Auto-scroll to follow cursor if enabled
+                            if (followCursor) {
+                                // Small delay to ensure cursor has moved
+                                setTimeout(scrollCursorIntoView, 50);
+                            }
                         }
+                    } catch (e) {
+                        console.error("Error during playback:", e);
+                        stopPlayback();
                     }
                 }, interval);
             } catch (e) {
