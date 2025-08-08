@@ -3,6 +3,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:musicore/models/app_state.dart';
 import 'package:musicore/providers/score_providers.dart';
+import 'dart:async';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 class ScoreViewerScreen extends ConsumerStatefulWidget {
   const ScoreViewerScreen({super.key});
@@ -12,6 +14,41 @@ class ScoreViewerScreen extends ConsumerStatefulWidget {
 }
 
 class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
+  late StreamSubscription _intentDataStreamSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupIntentListener();
+  }
+
+  @override
+  void dispose() {
+    _intentDataStreamSubscription.cancel();
+    super.dispose();
+  }
+
+  void _setupIntentListener() {
+    // For sharing files when the app is closed
+    ReceiveSharingIntent.instance.getInitialMedia().then((List<SharedMediaFile> value) {
+      if (value.isNotEmpty) {
+        final filePath = value.first.path;
+        ref.read(appStateProvider.notifier).loadFileFromPath(filePath);
+      }
+    });
+
+    // When the app is running
+    _intentDataStreamSubscription =
+        ReceiveSharingIntent.instance.getMediaStream().listen((List<SharedMediaFile> value) {
+      if (value.isNotEmpty) {
+        final filePath = value.first.path;
+        ref.read(appStateProvider.notifier).loadFileFromPath(filePath);
+      }
+    }, onError: (err) {
+      debugPrint("getMediaStream error: $err");
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = ref.watch(appStateProvider);

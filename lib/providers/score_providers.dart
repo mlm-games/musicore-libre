@@ -69,6 +69,45 @@ class AppStateNotifier extends StateNotifier<AppState> {
     }
   }
 
+  Future<void> loadFileFromPath(String filePath) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('File does not exist at path: $filePath');
+      }
+
+      final bytes = await file.readAsBytes();
+      final fileName = path.basename(filePath);
+      final extension = path.extension(filePath).toLowerCase();
+      String xmlString;
+
+      if (extension == '.mxl') {
+        xmlString = await _extractXmlFromMxl(bytes);
+      } else {
+        xmlString = String.fromCharCodes(bytes);
+      }
+
+      await _loadXmlIntoWebView(xmlString);
+
+      state = state.copyWith(
+        isLoading: false,
+        isScoreLoaded: true,
+        playbackState: PlaybackState.stopped,
+        zoomLevel: 1.0,
+        currentFileName: fileName,
+        playbackSpeed: 1.0,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to load shared file: ${e.toString()}',
+      );
+    }
+  }
+
+
   Future<String> _extractXmlFromMxl(List<int> bytes) async {
     final archive = ZipDecoder().decodeBytes(bytes);
 
