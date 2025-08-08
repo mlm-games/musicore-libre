@@ -287,72 +287,6 @@
             followCursor = follow;
             if (osmd && osmd.cursor) {
                 osmd.FollowCursor = follow;
-                if (osmd.cursor.CursorOptions) {
-                    osmd.cursor.CursorOptions.follow = follow;
-                }
-            }
-        }
-
-        // Improved scroll cursor into view with better vertical handling
-        function scrollCursorIntoView() {
-            if (!followCursor || !osmd || !osmd.cursor) return;
-
-            try {
-                // Get the cursor element
-                let cursorElement = osmd.cursor.cursorElement;
-
-                // If no cursor element, try to find it in the SVG
-                if (!cursorElement) {
-                    const container = document.getElementById('osmd-container');
-                    const cursorLines = container.querySelectorAll('line[stroke*="#64b5f6"], line[stroke*="#1976d2"]');
-                    if (cursorLines.length > 0) {
-                        cursorElement = cursorLines[0];
-                    } else {
-                        return;
-                    }
-                }
-
-                // Get cursor and viewport positions
-                const cursorRect = cursorElement.getBoundingClientRect();
-                const viewportHeight = window.innerHeight;
-                const viewportWidth = window.innerWidth;
-
-                // Calculate visible area with margins
-                const topMargin = 150; // Larger margin for portrait mode
-                const bottomMargin = 200; // Account for bottom controls
-                const sideMargin = 50;
-
-                const visibleTop = topMargin;
-                const visibleBottom = viewportHeight - bottomMargin;
-                const visibleLeft = sideMargin;
-                const visibleRight = viewportWidth - sideMargin;
-
-                // Check if cursor is outside visible area
-                const needsVerticalScroll = cursorRect.top < visibleTop || cursorRect.bottom > visibleBottom;
-                const needsHorizontalScroll = cursorRect.left < visibleLeft || cursorRect.right > visibleRight;
-
-                if (needsVerticalScroll || needsHorizontalScroll) {
-                    // Calculate target scroll position
-                    let scrollOptions = {
-                        behavior: 'smooth'
-                    };
-
-                    // For vertical scrolling in portrait mode, keep cursor in upper third of screen
-                    if (needsVerticalScroll) {
-                        const targetTop = window.pageYOffset + cursorRect.top - (viewportHeight * 0.3);
-                        scrollOptions.top = Math.max(0, targetTop);
-                    }
-
-                    // For horizontal scrolling
-                    if (needsHorizontalScroll) {
-                        const targetLeft = window.pageXOffset + cursorRect.left - (viewportWidth * 0.5);
-                        scrollOptions.left = Math.max(0, targetLeft);
-                    }
-
-                    window.scrollTo(scrollOptions);
-                }
-            } catch (e) {
-                console.error("Error scrolling cursor into view:", e);
             }
         }
 
@@ -372,9 +306,6 @@
                 const baseInterval = 300; // Base interval in ms
                 const interval = baseInterval / playbackSpeed;
 
-                // Initial scroll to cursor position
-                setTimeout(scrollCursorIntoView, 100);
-
                 playbackInterval = setInterval(() => {
                     try {
                         if (osmd.cursor.Iterator && osmd.cursor.Iterator.EndReached) {
@@ -386,10 +317,13 @@
                         } else {
                             osmd.cursor.next();
 
-                            // Auto-scroll to follow cursor if enabled
-                            if (followCursor) {
-                                // Small delay to ensure cursor has moved
-                                setTimeout(scrollCursorIntoView, 50);
+                            // Simple scroll to follow cursor
+                            if (followCursor && osmd.cursor.cursorElement) {
+                                osmd.cursor.cursorElement.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'center',
+                                    inline: 'center'
+                                });
                             }
                         }
                     } catch (e) {
