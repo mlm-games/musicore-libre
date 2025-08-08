@@ -217,29 +217,15 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: "Musicore ${{ needs.prepare-release.outputs.version }}"
           body_path: release_notes.md
-          draft: false
           prerelease: ${{ inputs.prerelease || false }}
           files: |
             artifacts/**/*
           fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
 
-  cleanup:
-    needs: create-release
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Delete artifacts
-        uses: geekyeggo/delete-artifact@v2
-        with:
-          name: |
-            android-apk
-            # linux-x64
-            # macos-universal
-            # windows-x64
+  
