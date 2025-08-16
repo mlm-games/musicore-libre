@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version_override:
-        description: 'Override version (optional)'
+        description: 'Override version (optional, e.g., 1.2.3). When set, a tag v<version> will be created.'
         required: false
         type: string
       prerelease:
@@ -16,37 +16,72 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare-release:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag_name: ${{ steps.version.outputs.tag_name }}
+      release_notes: ${{ steps.notes.outputs.release-notes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.ref }}
 
-      - name: Get version
+      - name: Resolve version and tag
         id: version
+        shell: bash
         run: |
+          set -Eeuo pipefail
           if [ -n "${{ inputs.version_override }}" ]; then
             VERSION="${{ inputs.version_override }}"
-            TAG_NAME="v$VERSION"
+            TAG_NAME="v${VERSION}"
           else
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             VERSION="${TAG_NAME#v}"
           fi
-          
-          # Verify version matches pubspec.yaml
-          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//')
-          if [ "$VERSION" != "$PUBSPEC_VERSION" ]; then
-            echo "::warning::Tag version ($VERSION) doesn't match pubspec.yaml ($PUBSPEC_VERSION)"
+
+          # Verify version matches pubspec.yaml (ignore build metadata after '+')
+          PUBSPEC_VERSION="$(grep -E '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//; s/+.*//')"
+          if [ -n "$PUBSPEC_VERSION" ] && [ "$VERSION" != "$PUBSPEC_VERSION" ]; then
+            echo "::warning::Tag/version ($VERSION) doesn't match pubspec.yaml ($PUBSPEC_VERSION)"
           fi
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if needed (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.version_override != ''
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TAG="${{ steps.version.outputs.tag_name }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+          else
+            git config user.name "${{ github.actor }}"
+            git config user.email "${{ github.actor }}@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Generate Release Notes
+        id: notes
+        uses: mlm-games/release-notes-generator@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          changelog-path: 'CHANGELOG.md'
+          auto-commit: 'true'
+          exclude-patterns: 'chore:,ci:,docs:,Update release notes,Merge pull request'
 
   build:
     needs: prepare-release
@@ -61,7 +96,7 @@ jobs:
             artifact_name: "android-apk"
             asset_extension: "apk"
             asset_content_type: "application/vnd.android.package-archive"
-          
+          # Uncomment to enable more targets later
           # - platform: ubuntu-latest
           #   target: linux
           #   build_cmd: "flutter build linux --release"
@@ -69,7 +104,6 @@ jobs:
           #   artifact_name: "linux-x64"
           #   asset_extension: "tar.gz"
           #   asset_content_type: "application/gzip"
-          
           # - platform: macos-latest
           #   target: macos
           #   build_cmd: "flutter build macos --release"
@@ -77,7 +111,6 @@ jobs:
           #   artifact_name: "macos-universal"
           #   asset_extension: "dmg"
           #   asset_content_type: "application/x-apple-diskimage"
-          
           # - platform: windows-latest
           #   target: windows
           #   build_cmd: "flutter build windows --release"
@@ -85,18 +118,28 @@ jobs:
           #   artifact_name: "windows-x64"
           #   asset_extension: "zip"
           #   asset_content_type: "application/zip"
-
     runs-on: ${{ matrix.platform }}
-    
+
     steps:
-      - name: Checkout code
+      - name: Checkout code at tag
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
           cache: true
+
+      - name: Set up Java 17 (Android)
+        if: matrix.target == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: 'gradle'
 
       - name: Install Linux dependencies
         if: matrix.target == 'linux'
@@ -109,7 +152,7 @@ jobs:
 
       - name: Run tests
         run: flutter test
-        continue-on-error: true # Currently no tests (or just the default test)
+        continue-on-error: true
 
       - name: Build ${{ matrix.target }}
         run: ${{ matrix.build_cmd }}
@@ -118,9 +161,12 @@ jobs:
         id: package
         shell: bash
         run: |
-          APP_NAME="Musicore"
+          set -Eeuo pipefail
+          # App name from pubspec (fallback to Musicore)
+          APP_NAME="$(grep -E '^name:' pubspec.yaml | awk '{print $2}' | tr -d '\r' || true)"
+          APP_NAME="${APP_NAME:-Musicore}"
           VERSION="${{ needs.prepare-release.outputs.version }}"
-          
+
           case "${{ matrix.target }}" in
             android)
               PACKAGE_NAME="${APP_NAME}-${VERSION}-android.apk"
@@ -130,31 +176,30 @@ jobs:
               PACKAGE_NAME="${APP_NAME}-${VERSION}-linux-x64.tar.gz"
               cd build/linux/x64/release
               tar czf "../../../../$PACKAGE_NAME" bundle/
-              cd -
+              cd - >/dev/null
               ;;
             macos)
-              PACKAGE_NAME="${APP_NAME}-${VERSION}-macos.dmg"
-              # Create DMG (requires additional tooling)
-              # For now, create a zip
+              # Prefer DMG if you add tooling; fallback to zip of .app
               PACKAGE_NAME="${APP_NAME}-${VERSION}-macos.zip"
               cd "${{ matrix.artifact_path }}"
               zip -r "../../../../../$PACKAGE_NAME" *.app
-              cd -
+              cd - >/dev/null
               ;;
             windows)
               PACKAGE_NAME="${APP_NAME}-${VERSION}-windows-x64.zip"
               cd build/windows/x64/runner
               7z a -tzip "../../../../$PACKAGE_NAME" Release/
-              cd -
+              cd - >/dev/null
               ;;
           esac
-          
-          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "package_path=$(pwd)/$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "package_path=$(pwd)/$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Generate SHA256 checksum
         shell: bash
         run: |
+          set -Eeuo pipefail
           sha256sum "${{ steps.package.outputs.package_name }}" > "${{ steps.package.outputs.package_name }}.sha256"
           echo "Checksum:"
           cat "${{ steps.package.outputs.package_name }}.sha256"
@@ -163,6 +208,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
+          if-no-files-found: error
+          retention-days: 14
           path: |
             ${{ steps.package.outputs.package_name }}
             ${{ steps.package.outputs.package_name }}.sha256
@@ -172,60 +219,59 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Generate release notes
-        id: release_notes
+      - name: Assemble release notes (with downloads)
+        id: assemble
+        shell: bash
         run: |
-          # Get previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "## What's Changed" > release_notes.md
-            echo "" >> release_notes.md
-            
-            # Get commit messages
-            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD >> release_notes.md
-            
-            echo "" >> release_notes.md
-            echo "## Downloads" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "| Platform | Download | SHA256 |" >> release_notes.md
-            echo "|----------|----------|--------|" >> release_notes.md
-            
-            # Add download links (will be updated after release creation)
-            for artifact in artifacts/*/*.sha256; do
-              if [ -f "$artifact" ]; then
-                FILENAME=$(basename "$artifact" .sha256)
-                CHECKSUM=$(cut -d' ' -f1 "$artifact")
-                PLATFORM=$(echo "$FILENAME" | grep -oE '(android|linux|macos|windows)')
-                echo "| $PLATFORM | [$FILENAME](https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare-release.outputs.tag_name }}/$FILENAME) | \`$CHECKSUM\` |" >> release_notes.md
-              fi
-            done
-          else
-            echo "Initial release" > release_notes.md
+          set -Eeuo pipefail
+          # Use generated notes from prepare-release, fallback to simple header
+          NOTES="${{ needs.prepare-release.outputs.release_notes }}"
+          if [ -z "$NOTES" ]; then
+            NOTES="See the changelog for details."
           fi
+
+          {
+            echo "## What's Changed"
+            echo ""
+            echo "$NOTES"
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "| Platform | File | SHA256 |"
+            echo "|----------|------|--------|"
+          } > release_notes.md
+
+          # Add files discovered in artifacts folder
+          TAG="${{ needs.prepare-release.outputs.tag_name }}"
+          while IFS= read -r -d '' checksum; do
+            FILE="${checksum%.sha256}"
+            NAME="$(basename "$FILE")"
+            PLATFORM="$(echo "$NAME" | grep -oE '(android|linux|macos|windows)' || echo '-')"
+            SUM="$(cut -d' ' -f1 "$checksum")"
+            echo "| $PLATFORM | [$NAME](https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}) | \`$SUM\` |" >> release_notes.md
+          done < <(find artifacts -type f -name "*.sha256" -print0 | sort -z)
+
+          echo "body_path=release_notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: "Musicore ${{ needs.prepare-release.outputs.version }}"
-          body_path: release_notes.md
+          body_path: ${{ steps.assemble.outputs.body_path }}
           prerelease: ${{ inputs.prerelease || false }}
-          files: |
-            artifacts/**/*
+          files: artifacts/**/*
           fail_on_unmatched_files: false
-        
-
-  
