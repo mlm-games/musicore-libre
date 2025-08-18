@@ -4,11 +4,11 @@ A MusicXML viewer for android.
 
 Just a prototype for trying out flutter, mostly not going to develop it further due to flutter setup being a pain and automation being half-baked, and i also have an habit of resetting often.
 
-## Features (somewhat applicable)
+## Features 
 
-- displays MusicXML files (.xml, .musicxml, .mxl) (tested .mxl)
+- displays MusicXML files (.xml, .musicxml, .mxl) (tested .mxl, .xml)
 - Non-audio playback with play/pause/stop controls
-- Dark mode support (only for app, )
+- Dark mode support
 
 ## Getting Started
 
