@@ -20,6 +20,21 @@ on:
         required: false
         default: false
         type: boolean
+      upload_releases:
+        description: "Publish to Google Play and create a GitHub Release"
+        required: true
+        default: true
+        type: boolean
+      play_track:
+        description: "Google Play track"
+        required: true
+        default: internal
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
 
 permissions:
   contents: write
@@ -30,6 +45,8 @@ concurrency:
 
 jobs:
   prepare-release:
+    # Skip the duplicate run that happens when workflow_dispatch creates a tag
+    if: !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.actor == 'github-actions[bot]')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -56,23 +73,21 @@ jobs:
             VERSION_RAW="${TAG_NAME#v}"
           fi
 
-          # Keep only core semver part for pubspec (strip any '+build')
+          # Core semver for pubspec (strip any '+build')
           VERSION="${VERSION_RAW%%+*}"
 
-          # Optionally auto-bump MINOR if the tag exists (workflow_dispatch only)
+          # Optional auto-bump MINOR until a free tag is found (manual runs only)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version_override }}" ] && [ "${{ inputs.auto_bump_if_tag_exists }}" = "true" ]; then
-            # bump MINOR until a free 'vX.Y.Z' is found; reset PATCH to 0 on bump
             while git rev-parse "v${VERSION}" >/dev/null 2>&1; do
               IFS='.' read -r MA MI PA <<< "${VERSION}"
-              MI=$((MI+1))
-              PA=0
+              MI=$((MI+1)); PA=0
               VERSION="${MA}.${MI}.${PA}"
             done
             TAG_NAME="v${VERSION}"
             echo "::notice::Auto-bumped to ${TAG_NAME} because the requested tag already existed."
           fi
 
-          # Compare with pubspec.yaml (ignore build metadata after '+')
+          # Compare with pubspec.yaml (ignore build metadata)
           PUBSPEC_VERSION="$(grep -E '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//; s/+.*//')"
           if [ -n "${PUBSPEC_VERSION:-}" ] && [ "$VERSION" != "$PUBSPEC_VERSION" ]; then
             echo "::notice::pubspec.yaml has $PUBSPEC_VERSION; will sync to $VERSION."
@@ -128,45 +143,22 @@ jobs:
         with:
           version: ${{ steps.version.outputs.version }}
           changelog-path: 'CHANGELOG.md'
-          auto-commit: 'true'
+          auto-commit: ${{ github.event_name != 'push' }} # do not commit on tag runs
           exclude-patterns: 'chore:,ci:,docs:,Update release notes,Merge pull request'
 
-  build:
+  build-android:
     needs: prepare-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ubuntu-latest
-            target: android
-            build_cmd: "flutter build apk --release"
-            artifact_path: "build/app/outputs/flutter-apk/app-release.apk"
-            artifact_name: "android-apk"
-            asset_extension: "apk"
-            asset_content_type: "application/vnd.android.package-archive"
-          # Uncomment to enable more targets later
-          # - platform: ubuntu-latest
-          #   target: linux
-          #   build_cmd: "flutter build linux --release"
-          #   artifact_path: "build/linux/x64/release/bundle"
-          #   artifact_name: "linux-x64"
-          #   asset_extension: "tar.gz"
-          #   asset_content_type: "application/gzip"
-          # - platform: macos-latest
-          #   target: macos
-          #   build_cmd: "flutter build macos --release"
-          #   artifact_path: "build/macos/Build/Products/Release"
-          #   artifact_name: "macos-universal"
-          #   asset_extension: "dmg"
-          #   asset_content_type: "application/x-apple-diskimage"
-          # - platform: windows-latest
-          #   target: windows
-          #   build_cmd: "flutter build windows --release"
-          #   artifact_path: "build/windows/x64/runner/Release"
-          #   artifact_name: "windows-x64"
-          #   asset_extension: "zip"
-          #   asset_content_type: "application/zip"
-    runs-on: ${{ matrix.platform }}
+    # Skip duplicate tag-push run by the bot
+    if: !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.actor == 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      KEYSTORE_PATH: ${{ runner.temp }}/android-signing.jks
+      STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout code at tag
@@ -178,24 +170,35 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: "stable"
+          # Pin to a major/minor compatible with your lockfile (Dart >=3.8, Flutter >=3.27)
+          flutter-version: '3.27.x'
+          channel: 'stable'
           cache: true
 
-      - name: Set up Java 17 (Android)
-        if: matrix.target == 'android'
+      - name: Set up Java 17 (Android/AGP)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: 'gradle'
 
-      - name: Install Linux dependencies
-        if: matrix.target == 'linux'
+      - name: Write local.properties for Flutter SDK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          echo "flutter.sdk=$FLUTTER_HOME" > android/local.properties
+          cat android/local.properties
 
-      - name: Sync pubspec.yaml to tag version (build-only for tag pushes)
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses
+        continue-on-error: true
+
+      - name: Decode keystore (if provided)
+        if: ${{ env.STORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_PATH"
+          ls -l "$KEYSTORE_PATH" || true
+
+      - name: Ensure pubspec version has build number for CI
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
@@ -205,89 +208,103 @@ jobs:
           TARGET="${{ needs.prepare-release.outputs.version }}"
           if [ "${CORE_CURRENT}" != "${TARGET}" ]; then
             NEW_VERSION="${TARGET}+${GITHUB_RUN_NUMBER}"
-            echo "Patching pubspec.yaml for build: ${CURRENT:-<none>} -> ${NEW_VERSION}"
-            if grep -qE '^version:' pubspec.yaml; then
-              sed -i -E "s/^version:.*/version: ${NEW_VERSION}/" pubspec.yaml
-            else
-              printf "\nversion: %s\n" "${NEW_VERSION}" >> pubspec.yaml
-            fi
-          else
-            # Ensure a build number exists; if not, attach run number
-            if [[ "${CURRENT}" != *"+"* ]]; then
-              NEW_VERSION="${CORE_CURRENT}+${GITHUB_RUN_NUMBER}"
-              echo "Adding build number to pubspec.yaml for build: ${CURRENT} -> ${NEW_VERSION}"
-              sed -i -E "s/^version:.*/version: ${NEW_VERSION}/" pubspec.yaml
-            fi
+            echo "Patching pubspec.yaml: ${CURRENT:-<none>} -> ${NEW_VERSION}"
+            sed -i -E "s/^version:.*/version: ${NEW_VERSION}/" pubspec.yaml
+          elif [[ "${CURRENT}" != *"+"* ]]; then
+            NEW_VERSION="${CORE_CURRENT}+${GITHUB_RUN_NUMBER}"
+            echo "Adding build number: ${CURRENT} -> ${NEW_VERSION}"
+            sed -i -E "s/^version:.*/version: ${NEW_VERSION}/" pubspec.yaml
           fi
 
       - name: Get dependencies
-        run: flutter pub get
+        run: |
+          set -e
+          flutter pub get --enforce-lockfile || flutter pub get
 
-      - name: Run tests
+      - name: Run tests (non-blocking)
         run: flutter test
         continue-on-error: true
 
-      - name: Build ${{ matrix.target }}
-        run: ${{ matrix.build_cmd }}
+      # Build artifacts
+      - name: Build Android App Bundle (AAB)
+        run: flutter build appbundle --release
 
-      - name: Package build artifacts
+      - name: Build Universal APK (no splits)
+        run: flutter build apk --release
+
+      - name: Build ABI-split APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Package artifacts
         id: package
         shell: bash
         run: |
           set -Eeuo pipefail
-          # App name from pubspec (fallback to Musicore)
+          mkdir -p artifacts
+
           APP_NAME="$(grep -E '^name:' pubspec.yaml | awk '{print $2}' | tr -d '\r' || true)"
           APP_NAME="${APP_NAME:-Musicore}"
           VERSION="${{ needs.prepare-release.outputs.version }}"
 
-          case "${{ matrix.target }}" in
-            android)
-              PACKAGE_NAME="${APP_NAME}-${VERSION}-android.apk"
-              cp "${{ matrix.artifact_path }}" "$PACKAGE_NAME"
-              ;;
-            linux)
-              PACKAGE_NAME="${APP_NAME}-${VERSION}-linux-x64.tar.gz"
-              cd build/linux/x64/release
-              tar czf "../../../../$PACKAGE_NAME" bundle/
-              cd - >/dev/null
-              ;;
-            macos)
-              PACKAGE_NAME="${APP_NAME}-${VERSION}-macos.zip"
-              cd "${{ matrix.artifact_path }}"
-              zip -r "../../../../../$PACKAGE_NAME" *.app
-              cd - >/dev/null
-              ;;
-            windows)
-              PACKAGE_NAME="${APP_NAME}-${VERSION}-windows-x64.zip"
-              cd build/windows/x64/runner
-              7z a -tzip "../../../../$PACKAGE_NAME" Release/
-              cd - >/dev/null
-              ;;
-          esac
+          # AAB
+          AAB_SRC="build/app/outputs/bundle/release/app-release.aab"
+          AAB_OUT="${APP_NAME}-${VERSION}-android.aab"
+          cp "$AAB_SRC" "artifacts/$AAB_OUT"
 
-          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
-          echo "package_path=$(pwd)/$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+          # Universal APK
+          APK_UNI_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          APK_UNI_OUT="${APP_NAME}-${VERSION}-android-universal.apk"
+          cp "$APK_UNI_SRC" "artifacts/$APK_UNI_OUT"
 
-      - name: Generate SHA256 checksum
+          # Split APKs
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
+            base="$(basename "$apk")"
+            # extract arch token (arm64-v8a, armeabi-v7a, x86_64, x86)
+            arch="$(echo "$base" | grep -oE '(arm64-v8a|armeabi-v7a|x86_64|x86)' || true)"
+            [ -n "$arch" ] && cp "$apk" "artifacts/${APP_NAME}-${VERSION}-android-${arch}.apk"
+          done
+
+          # Emit outputs for later steps
+          echo "aab_path=$(pwd)/artifacts/$AAB_OUT" >> "$GITHUB_OUTPUT"
+          echo "artifact_dir=$(pwd)/artifacts" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SHA256 checksums and sizes
         shell: bash
         run: |
           set -Eeuo pipefail
-          sha256sum "${{ steps.package.outputs.package_name }}" > "${{ steps.package.outputs.package_name }}.sha256"
-          echo "Checksum:"
-          cat "${{ steps.package.outputs.package_name }}.sha256"
+          cd artifacts
+          for f in *; do
+            [ -f "$f" ] || continue
+            sha256sum "$f" > "$f.sha256"
+            stat --printf="%n %s bytes\n" "$f"
+          done
+          cd -
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: android-${{ needs.prepare-release.outputs.version }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            ${{ steps.package.outputs.package_name }}
-            ${{ steps.package.outputs.package_name }}.sha256
+            artifacts/*
+
+      - name: Upload to Google Play (optional)
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_releases == true && inputs.play_track != '' && secrets.PLAY_SERVICE_ACCOUNT_JSON != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.github.mlm_games.musicore
+          releaseFiles: ${{ steps.package.outputs.aab_path }}
+          track: ${{ inputs.play_track }}
+          status: completed
+          whatsNewDirectory: fastlane/metadata/android
 
   create-release:
-    needs: [prepare-release, build]
+    needs: [prepare-release, build-android]
+    if: |
+      !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.actor == 'github-actions[bot]') &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload_releases == true))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -321,18 +338,17 @@ jobs:
             echo ""
             echo "## Downloads"
             echo ""
-            echo "| Platform | File | SHA256 |"
-            echo "|----------|------|--------|"
+            echo "| File | Size | SHA256 |"
+            echo "|------|------|--------|"
           } > release_notes.md
 
           TAG="${{ needs.prepare-release.outputs.tag_name }}"
-          while IFS= read -r -d '' checksum; do
-            FILE="${checksum%.sha256}"
-            NAME="$(basename "$FILE")"
-            PLATFORM="$(echo "$NAME" | grep -oE '(android|linux|macos|windows)' || echo '-')"
-            SUM="$(cut -d' ' -f1 "$checksum")"
-            echo "| $PLATFORM | [$NAME](https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}) | \`$SUM\` |" >> release_notes.md
-          done < <(find artifacts -type f -name "*.sha256" -print0 | sort -z)
+          while IFS= read -r -d '' file; do
+            NAME="$(basename "$file")"
+            SIZE="$(stat --printf="%s" "$file" 2>/dev/null || stat -f%z "$file")"
+            SUM="$(cut -d' ' -f1 "$file.sha256" 2>/dev/null || echo '-')"
+            echo "| [$NAME](https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}) | ${SIZE} | \`$SUM\` |" >> release_notes.md
+          done < <(find artifacts -type f -not -name "*.sha256" -print0 | sort -z)
 
           echo "body_path=release_notes.md" >> "$GITHUB_OUTPUT"
 
@@ -342,6 +358,6 @@ jobs:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: "Musicore ${{ needs.prepare-release.outputs.version }}"
           body_path: ${{ steps.assemble.outputs.body_path }}
-          prerelease: ${{ inputs.prerelease || false }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && (inputs.prerelease || false) }}
           files: artifacts/**/*
           fail_on_unmatched_files: false
