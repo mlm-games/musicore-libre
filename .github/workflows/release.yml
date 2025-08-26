@@ -148,55 +148,37 @@ jobs:
 
   build-android:
     needs: prepare-release
-    # Skip duplicate tag-push run by the bot
-    if: ${{ !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.actor == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
-    env:
-      KEYSTORE_PATH: ${{ runner.temp }}/android-signing.jks
-      STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
     steps:
-      - name: Checkout code at tag
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          # Pin to a major/minor compatible with your lockfile (Dart >=3.8, Flutter >=3.27)
           flutter-version: '3.27.x'
           channel: 'stable'
           cache: true
 
-      - name: Set up Java 17 (Android/AGP)
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Write local.properties for Flutter SDK
+      - name: Decode and Decrypt Keystore
         run: |
-          echo "flutter.sdk=$FLUTTER_HOME" > android/local.properties
-          cat android/local.properties
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses
-        continue-on-error: true
-
-      - name: Decode keystore (if provided)
-        if: ${{ env.STORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        shell: bash
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_PATH"
-          ls -l "$KEYSTORE_PATH" || true
+          echo "${{ secrets.KEYSTORE }}" > release.keystore.asc
+          
+          gpg -d --passphrase "${{ secrets.KEYSTORE_PASSPHRASE }}" \
+              --batch release.keystore.asc > release.keystore
+          
+          echo "KEYSTORE_PATH=${{ github.workspace }}/release.keystore" >> $GITHUB_ENV
 
       - name: Ensure pubspec version has build number for CI
         if: startsWith(github.ref, 'refs/tags/')
@@ -225,15 +207,23 @@ jobs:
         run: flutter test
         continue-on-error: true
 
-      # Build artifacts
-      - name: Build Android App Bundle (AAB)
+      - name: Build AAB
+        env:
+          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build appbundle --release
 
-      - name: Build Universal APK (no splits)
-        run: flutter build apk --release
-
-      - name: Build ABI-split APKs
-        run: flutter build apk --release --split-per-abi
+      - name: Build APKs
+        env:
+          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter build apk --release
+          flutter build apk --release --split-per-abi
 
       - name: Package artifacts
         id: package
