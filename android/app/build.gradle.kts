@@ -66,7 +66,17 @@ android {
             // Nothun
         }
     }
+
+    dependenciesInfo {
+        includeInApk = false
+    }
 }
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
 
 flutter {
     source = "../.."
