@@ -1,4 +1,4 @@
-name: Musicore
+name: musicore
 description: "A simple light MusicXML viewer (for just viewing musicxml files on the go)."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
