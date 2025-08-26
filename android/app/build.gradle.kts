@@ -77,6 +77,10 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isReproducibleFileOrder = true
 }
 
+configurations.configureEach {
+    exclude(group = "com.google.android.play")
+    exclude(group = "com.google.android.gms")
+}
 
 flutter {
     source = "../.."
