@@ -280,8 +280,9 @@ jobs:
             artifacts/*
 
       - name: Upload to Google Play (optional)
-        if: github.event_name == 'workflow_dispatch' && inputs.upload_releases == true && inputs.play_track != '' && secrets.PLAY_SERVICE_ACCOUNT_JSON != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_releases == true && inputs.play_track != ''
         uses: r0adkll/upload-google-play@v1
+        continue-on-error: true
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: io.github.mlm_games.musicore
