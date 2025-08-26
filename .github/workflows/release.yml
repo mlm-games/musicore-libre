@@ -28,7 +28,7 @@ on:
       play_track:
         description: "Google Play track"
         required: true
-        default: internal
+        default: alpha
         type: choice
         options:
           - internal
