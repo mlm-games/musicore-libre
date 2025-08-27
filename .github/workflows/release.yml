@@ -157,13 +157,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.27.x'
-          channel: 'stable'
-          cache: true
+          fetch-depth: 0
+          submodules: recursive
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -198,13 +193,14 @@ jobs:
             sed -i -E "s/^version:.*/version: ${NEW_VERSION}/" pubspec.yaml
           fi
 
+      - name: Flutter doctor (sanity)
+        run: submodules/flutter/bin/flutter doctor -v
+
       - name: Get dependencies
-        run: |
-          set -e
-          flutter pub get --enforce-lockfile || flutter pub get
+        run: submodules/flutter/bin/flutter pub get --enforce-lockfile || submodules/flutter/bin/flutter pub get
 
       - name: Run tests (non-blocking)
-        run: flutter test
+        run: submodules/flutter/bin/flutter test
         continue-on-error: true
 
       - name: Build AAB
@@ -213,7 +209,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: flutter build appbundle --release
+        run: submodules/flutter/bin/flutter build appbundle --release
 
       - name: Build APKs
         env:
@@ -222,8 +218,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flutter build apk --release
-          flutter build apk --release --split-per-abi
+          submodules/flutter/bin/flutter build apk --release
+          submodules/flutter/bin/flutter build apk --release --split-per-abi
 
       - name: Package artifacts
         id: package
