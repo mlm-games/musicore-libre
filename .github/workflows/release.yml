@@ -221,8 +221,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          submodules/flutter/bin/flutter build apk --release --split-debug-info=build/app/outputs/symbols
-          submodules/flutter/bin/flutter build apk --release --split-per-abi --split-debug-info=build/app/outputs/symbols
+          submodules/flutter/bin/flutter build apk --release
+          submodules/flutter/bin/flutter build apk --release --split-per-abi
 
       - name: Package artifacts
         id: package
