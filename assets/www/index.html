@@ -84,13 +84,22 @@
         let playbackSpeed = 1.0;
         let followCursor = true;
         let isDarkMode = false;
+        let pendingRender = null;
 
-        // Check initial dark mode state
+        // Initial dark mode
         if (window.matchMedia) {
             isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
 
-        // Initialize OSMD
+        function scheduleRender() {
+            if (!osmd || !osmd.GraphicSheet) return;
+            if (pendingRender) return;
+            pendingRender = requestAnimationFrame(() => {
+                try { osmd.render(); } catch (e) { console.error('Render error:', e); }
+                pendingRender = null;
+            });
+        }
+
         function initializeOSMD() {
             if (isInitialized) return;
 
@@ -109,40 +118,29 @@
                     renderSingleHorizontalStaffline: false,
                     coloringEnabled: true,
                     pageFormat: "Endless",
-                    pageBackgroundColor: "#00000000", // transparent
+                    pageBackgroundColor: "#00000000",
                     followCursor: true,
                     cursorsOptions: [
-                        {
-                            type: 0,
-                            color: isDarkMode ? "#64b5f6" : "#1976d2",
-                            alpha: 0.6,
-                            follow: true
-                        }
+                        { type: 0, color: isDarkMode ? "#64b5f6" : "#1976d2", alpha: 0.6, follow: true }
                     ]
                 };
 
                 osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, options);
-
-                // Apply initial color settings
                 applyColorRules(isDarkMode);
-
                 osmd.setLogLevel("warn");
                 isInitialized = true;
 
-                console.log("OSMD initialized successfully");
+                console.log("OSMD initialized");
             } catch (e) {
                 console.error("Failed to initialize OSMD:", e);
                 showError("Failed to initialize music renderer");
             }
         }
 
-        // Apply color rules based on theme
         function applyColorRules(isDark) {
             if (!osmd || !osmd.EngravingRules) return;
-
             try {
                 if (isDark) {
-                    // Dark mode - better contrast colors
                     osmd.EngravingRules.DefaultColorMusic = "#e8e8e8";
                     osmd.EngravingRules.DefaultColorRest = "#e8e8e8";
                     osmd.EngravingRules.DefaultColorStem = "#e8e8e8";
@@ -152,15 +150,12 @@
                     osmd.EngravingRules.LedgerLineColorDefault = "#a8a8a8";
                     osmd.EngravingRules.BarLineColor = "#b8b8b8";
                     osmd.EngravingRules.PageBackgroundColor = "#1a1a1a";
-
-                    // Additional color rules for better visibility
                     osmd.EngravingRules.DefaultColorNotehead = "#e8e8e8";
                     osmd.EngravingRules.DefaultColorBeam = "#e8e8e8";
                     osmd.EngravingRules.DefaultFillColorNotehead = "#e8e8e8";
                     osmd.EngravingRules.DefaultColorCautionaryAccidental = "#d0d0d0";
                     osmd.EngravingRules.DefaultColorGraceNote = "#d0d0d0";
                 } else {
-                    // Light mode - standard black notation
                     osmd.EngravingRules.DefaultColorMusic = "#000000";
                     osmd.EngravingRules.DefaultColorRest = "#000000";
                     osmd.EngravingRules.DefaultColorStem = "#000000";
@@ -170,7 +165,6 @@
                     osmd.EngravingRules.LedgerLineColorDefault = "#000000";
                     osmd.EngravingRules.BarLineColor = "#000000";
                     osmd.EngravingRules.PageBackgroundColor = "#ffffff";
-
                     osmd.EngravingRules.DefaultColorNotehead = "#000000";
                     osmd.EngravingRules.DefaultColorBeam = "#000000";
                     osmd.EngravingRules.DefaultFillColorNotehead = "#000000";
@@ -182,13 +176,10 @@
             }
         }
 
-        // Update colors based on theme
         function updateColors(isDark) {
             if (!osmd) return;
-
             isDarkMode = isDark;
 
-            // Update cursor color
             if (osmd.cursor) {
                 osmd.cursor.CursorOptions = {
                     type: 0,
@@ -199,10 +190,7 @@
             }
 
             applyColorRules(isDark);
-
-            if (osmd.GraphicSheet) {
-                osmd.render();
-            }
+            scheduleRender(); // CHANGED
         }
 
         // UI helpers
@@ -210,31 +198,22 @@
             document.getElementById("loading").style.display = "block";
             document.getElementById("error").style.display = "none";
         }
-
         function hideLoading() {
             document.getElementById("loading").style.display = "none";
         }
-
         function showError(message) {
-            document.getElementById("error").textContent = message;
+            document.getElementById("error").textContent = String(message); // CHANGED
             document.getElementById("error").style.display = "block";
             hideLoading();
         }
-
         function hideError() {
             document.getElementById("error").style.display = "none";
         }
 
         // Load MusicXML data
         async function loadMusicXML(xmlData) {
-            if (!osmd) {
-                initializeOSMD();
-            }
-
-            if (!osmd) {
-                console.error("OSMD not initialized");
-                return;
-            }
+            if (!osmd) initializeOSMD();
+            if (!osmd) { console.error("OSMD not initialized"); return; }
 
             showLoading();
             hideError();
@@ -242,10 +221,7 @@
 
             try {
                 await osmd.load(xmlData);
-
-                // Apply color settings
                 applyColorRules(isDarkMode);
-
                 await osmd.render();
 
                 if (osmd.cursor) {
@@ -255,72 +231,61 @@
 
                 hideLoading();
 
-                // Notify Flutter that loading is complete
+                // Optional: this call is currently unused on the Flutter side.
                 if (window.flutter_inappwebview) {
                     window.flutter_inappwebview.callHandler('loadingComplete');
                 }
             } catch (e) {
                 console.error("Error loading MusicXML:", e);
-                showError("Failed to load music score: " + e.message);
+                showError("Failed to load music score: " + String(e));
             }
         }
 
         // Zoom control
         function setZoom(zoomLevel) {
-            if (!osmd || !osmd.GraphicSheet) return;
-
+            if (!osmd) return;
             try {
                 osmd.zoom = zoomLevel;
-                osmd.render();
+                scheduleRender(); // CHANGED
             } catch (e) {
                 console.error("Error setting zoom:", e);
             }
         }
 
-        // Playback speed control
-        function setPlaybackSpeed(speed) {
-            playbackSpeed = speed;
-        }
+        function setPlaybackSpeed(speed) { playbackSpeed = speed; }
 
-        // Follow cursor control
         function setFollowCursor(follow) {
             followCursor = follow;
-            if (osmd && osmd.cursor) {
-                osmd.FollowCursor = follow;
-            }
+            if (osmd) osmd.FollowCursor = follow;
         }
 
-        // Playback controls
+        // Playback
         function startPlayback() {
             if (!osmd || !osmd.cursor) return;
-
             stopPlayback();
 
             try {
                 if (osmd.cursor.Iterator && osmd.cursor.Iterator.EndReached) {
                     osmd.cursor.reset();
                 }
-
                 osmd.cursor.show();
 
-                const baseInterval = 300; // Base interval in ms
-                const interval = baseInterval / playbackSpeed;
+                const baseInterval = 300;
+                const interval = baseInterval / Math.max(0.25, playbackSpeed);
 
                 playbackInterval = setInterval(() => {
                     try {
                         if (osmd.cursor.Iterator && osmd.cursor.Iterator.EndReached) {
                             stopPlayback();
-                            // Notify Flutter that playback has ended
                             if (window.flutter_inappwebview) {
                                 window.flutter_inappwebview.callHandler('playbackEnded');
                             }
                         } else {
                             osmd.cursor.next();
 
-                            // Simple scroll to follow cursor
                             if (followCursor && osmd.cursor.cursorElement) {
                                 osmd.cursor.cursorElement.scrollIntoView({
-                                    behavior: 'smooth',
+                                    behavior: 'auto', // CHANGED: less jank than 'smooth' per tick
                                     block: 'center',
                                     inline: 'center'
                                 });
@@ -346,62 +311,50 @@
 
         function stopPlayback() {
             pausePlayback();
-
             if (osmd && osmd.cursor) {
-                try {
-                    osmd.cursor.reset();
-                    osmd.cursor.show();
-                } catch (e) {
-                    console.error("Error resetting cursor:", e);
-                }
+                try { osmd.cursor.reset(); osmd.cursor.show(); } catch (e) { console.error("Error resetting cursor:", e); }
             }
         }
 
         function resetScore() {
             stopPlayback();
-
             if (osmd) {
-                try {
-                    osmd.clear();
-                } catch (e) {
-                    console.error("Error clearing score:", e);
-                }
+                try { osmd.clear(); } catch (e) { console.error("Error clearing score:", e); }
             }
-
             hideError();
             hideLoading();
         }
 
-        // Initialize when page loads
-        window.addEventListener('load', () => {
-            initializeOSMD();
-        });
+        // Lifecycle
+        window.addEventListener('load', () => { initializeOSMD(); });
 
-        // Handle resize events
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                if (osmd && osmd.GraphicSheet) {
-                    try {
-                        osmd.render();
-                    } catch (e) {
-                        console.error("Error on resize:", e);
-                    }
-                }
-            }, 250);
+            resizeTimeout = setTimeout(() => { scheduleRender(); }, 200); // CHANGED
         });
 
-        // Prevent default touch behaviors for better scrolling
-        document.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        });
+        // the old gesturestart preventDefault can cause warnings; CSS is cleaner.
+        // document.addEventListener('gesturestart', (e) => { e.preventDefault(); });
 
-        // Handle dark mode changes
         if (window.matchMedia) {
-            const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-            darkModeQuery.addListener((e) => updateColors(e.matches));
+            const mql = window.matchMedia('(prefers-color-scheme: dark)');
+            if (mql.addEventListener) {
+                mql.addEventListener('change', (e) => updateColors(e.matches)); // CHANGED
+            } else {
+                // fallback for very old engines
+                mql.addListener((e) => updateColors(e.matches));
+            }
         }
+
+        window.loadMusicXML = loadMusicXML;
+        window.setZoom = setZoom;
+        window.setPlaybackSpeed = setPlaybackSpeed;
+        window.setFollowCursor = setFollowCursor;
+        window.startPlayback = startPlayback;
+        window.pausePlayback = pausePlayback;
+        window.stopPlayback = stopPlayback;
+        window.resetScore = resetScore;
     </script>
 </body>
 

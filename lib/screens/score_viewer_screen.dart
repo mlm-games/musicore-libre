@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:musicore/models/app_state.dart';
 import 'package:musicore/providers/score_providers.dart';
-import 'dart:async';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 class ScoreViewerScreen extends ConsumerStatefulWidget {
@@ -30,7 +31,9 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
 
   void _setupIntentListener() {
     // For sharing files when the app is closed
-    ReceiveSharingIntent.instance.getInitialMedia().then((List<SharedMediaFile> value) {
+    ReceiveSharingIntent.instance
+        .getInitialMedia()
+        .then((List<SharedMediaFile> value) {
       if (value.isNotEmpty) {
         final filePath = value.first.path;
         ref.read(appStateProvider.notifier).loadFileFromPath(filePath);
@@ -38,8 +41,9 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
     });
 
     // When the app is running
-    _intentDataStreamSubscription =
-        ReceiveSharingIntent.instance.getMediaStream().listen((List<SharedMediaFile> value) {
+    _intentDataStreamSubscription = ReceiveSharingIntent.instance
+        .getMediaStream()
+        .listen((List<SharedMediaFile> value) {
       if (value.isNotEmpty) {
         final filePath = value.first.path;
         ref.read(appStateProvider.notifier).loadFileFromPath(filePath);
@@ -56,7 +60,11 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(appState.currentFileName ?? 'Musicore'),
+        title: Text(
+          appState.currentFileName ?? 'Musicore',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         centerTitle: true,
         elevation: 2,
         actions: [
@@ -116,6 +124,13 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
             ),
           ],
         ],
+        // loading indicator
+        bottom: appState.isLoading
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: Stack(
         children: [
@@ -148,6 +163,12 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
             },
             onConsoleMessage: (controller, consoleMessage) {
               debugPrint('Console: ${consoleMessage.message}');
+            },
+            onLoadStart: (controller, url) {
+              ref.read(webViewReadyProvider.notifier).state = false;
+            },
+            onLoadStop: (controller, url) async {
+              ref.read(webViewReadyProvider.notifier).state = true;
             },
           ),
           if (appState.isLoading)
@@ -250,9 +271,8 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: appState.isScoreLoaded
-          ? _buildControlBar(context, ref, appState)
-          : null,
+      bottomNavigationBar:
+          appState.isScoreLoaded ? _buildControlBar(context, ref, appState) : null,
     );
   }
 
@@ -314,7 +334,7 @@ class _ScoreViewerScreenState extends ConsumerState<ScoreViewerScreen> {
                 ],
               ),
             ),
-            // Zoom indicator
+            // zoom + Speed indicator
             Container(
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -1,13 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
-import 'package:musicore/models/app_state.dart';
+
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:archive/archive.dart';
+import 'package:musicore/models/app_state.dart';
 import 'package:path/path.dart' as path;
 
 final webViewControllerProvider =
     StateProvider<InAppWebViewController?>((ref) => null);
+
+// Tracks whether the HTML viewer finished loading (onLoadStop).
+final webViewReadyProvider = StateProvider<bool>((ref) => false);
 
 final appStateProvider =
     StateNotifierProvider<AppStateNotifier, AppState>((ref) {
@@ -43,12 +49,12 @@ class AppStateNotifier extends StateNotifier<AppState> {
       }
 
       final extension = file.extension?.toLowerCase();
-      String xmlString;
+      late final String xmlString;
 
       if (extension == 'mxl') {
         xmlString = await _extractXmlFromMxl(file.bytes!);
       } else {
-        xmlString = String.fromCharCodes(file.bytes!);
+        xmlString = utf8.decode(file.bytes!);
       }
 
       await _loadXmlIntoWebView(xmlString);
@@ -81,12 +87,12 @@ class AppStateNotifier extends StateNotifier<AppState> {
       final bytes = await file.readAsBytes();
       final fileName = path.basename(filePath);
       final extension = path.extension(filePath).toLowerCase();
-      String xmlString;
+      late final String xmlString;
 
       if (extension == '.mxl') {
         xmlString = await _extractXmlFromMxl(bytes);
       } else {
-        xmlString = String.fromCharCodes(bytes);
+        xmlString = utf8.decode(bytes);
       }
 
       await _loadXmlIntoWebView(xmlString);
@@ -107,16 +113,17 @@ class AppStateNotifier extends StateNotifier<AppState> {
     }
   }
 
-
   Future<String> _extractXmlFromMxl(List<int> bytes) async {
     final archive = ZipDecoder().decodeBytes(bytes);
 
-    // Look for the main score file
     for (final file in archive) {
-      if (file.name.endsWith('.xml') &&
-          !file.name.startsWith('META-INF/') &&
-          !file.name.startsWith('__MACOSX/')) {
-        return String.fromCharCodes(file.content);
+      if (!file.isFile) continue;
+      final name = file.name;
+      if (name.endsWith('.xml') &&
+          !name.startsWith('META-INF/') &&
+          !name.startsWith('__MACOSX/')) {
+        final content = file.content as List<int>;
+        return utf8.decode(content);
       }
     }
 
@@ -124,22 +131,39 @@ class AppStateNotifier extends StateNotifier<AppState> {
   }
 
   Future<void> _loadXmlIntoWebView(String xmlString) async {
-    // Wait a bit to ensure WebView is ready
-    await Future.delayed(const Duration(milliseconds: 500));
+    await _ensureWebViewReady();
 
-    // Escape the XML string for safe JavaScript injection
-    final escapedXml = xmlString
-        .replaceAll(r'\', r'\\')
-        .replaceAll('"', r'\"')
-        .replaceAll('\n', r'\n')
-        .replaceAll('\r', r'\r')
-        .replaceAll('\t', r'\t');
+    // Use JSON encoding to safely pass large strings and all characters.
+    final json = jsonEncode(xmlString);
+    await _evalJS('window.loadMusicXML($json);');
 
-    // Use window.loadMusicXML which we defined globally
-    final result = await _webController?.evaluateJavascript(
-        source: 'window.loadMusicXML("$escapedXml");');
+    // Sync viewer settings (in case user adjusted before loading another file).
+    await _evalJS('setZoom(${state.zoomLevel.clamp(0.2, 5.0)});');
+    await _evalJS('setPlaybackSpeed(${state.playbackSpeed.clamp(0.25, 2.0)});');
+    await _evalJS('setFollowCursor(${state.followCursor});');
+  }
 
-    print('Load result: $result');
+  Future<void> _ensureWebViewReady() async {
+    // Wait until the WebView reports it finished loading index.html
+    const totalWait = Duration(seconds: 8);
+    const pollEvery = Duration(milliseconds: 100);
+    var waited = Duration.zero;
+
+    while (!_ref.read(webViewReadyProvider)) {
+      await Future.delayed(pollEvery);
+      waited += pollEvery;
+      if (waited >= totalWait) {
+        throw Exception('Viewer is not ready yet. Please try again.');
+      }
+    }
+  }
+
+  Future<void> _evalJS(String source) async {
+    try {
+      await _webController?.evaluateJavascript(source: source);
+    } catch (e) {
+      debugPrint('JS eval error: $e');
+    }
   }
 
   void setZoom(double newZoom) {
@@ -147,7 +171,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
     final clampedZoom = newZoom.clamp(0.2, 5.0);
     state = state.copyWith(zoomLevel: clampedZoom);
-    _webController?.evaluateJavascript(source: 'setZoom($clampedZoom);');
+    _evalJS('setZoom($clampedZoom);');
   }
 
   void zoomIn() => setZoom(state.zoomLevel + 0.2);
@@ -159,38 +183,36 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
     final clampedSpeed = speed.clamp(0.25, 2.0);
     state = state.copyWith(playbackSpeed: clampedSpeed);
-    _webController?.evaluateJavascript(
-        source: 'setPlaybackSpeed($clampedSpeed);');
+    _evalJS('setPlaybackSpeed($clampedSpeed);');
   }
 
   void toggleFollowCursor() {
     state = state.copyWith(followCursor: !state.followCursor);
-    _webController?.evaluateJavascript(
-        source: 'setFollowCursor(${state.followCursor});');
+    _evalJS('setFollowCursor(${state.followCursor});');
   }
 
   void startPlayback() {
     if (!state.isScoreLoaded) return;
     state = state.copyWith(playbackState: PlaybackState.playing);
-    _webController?.evaluateJavascript(source: 'startPlayback();');
+    _evalJS('startPlayback();');
   }
 
   void pausePlayback() {
     if (!state.isScoreLoaded) return;
     state = state.copyWith(playbackState: PlaybackState.paused);
-    _webController?.evaluateJavascript(source: 'pausePlayback();');
+    _evalJS('pausePlayback();');
   }
 
   void stopPlayback() {
     if (!state.isScoreLoaded) return;
     state = state.copyWith(playbackState: PlaybackState.stopped);
-    _webController?.evaluateJavascript(source: 'stopPlayback();');
+    _evalJS('stopPlayback();');
   }
 
   void resetScore() {
     stopPlayback();
     state = const AppState();
-    _webController?.evaluateJavascript(source: 'resetScore();');
+    _evalJS('resetScore();');
   }
 
   void handlePlaybackEnded() {
