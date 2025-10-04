@@ -1,6 +1,6 @@
 ## 1.5.0
 
-
+ - Auto jumps to next page on playing
 
 
 ## 1.4.3
