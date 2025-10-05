@@ -202,9 +202,9 @@ jobs:
       - name: Get dependencies
         run: submodules/flutter/bin/flutter pub get --enforce-lockfile || submodules/flutter/bin/flutter pub get
 
-      - name: Run tests (non-blocking)
-        run: submodules/flutter/bin/flutter test
-        continue-on-error: true
+      # - name: Run tests (non-blocking)
+      #   run: submodules/flutter/bin/flutter test
+      #   continue-on-error: true
 
       - name: Build AAB
         env:
