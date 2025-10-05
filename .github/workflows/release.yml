@@ -21,20 +21,20 @@ on:
         default: false
         type: boolean
       upload_releases:
-        description: "Publish to Google Play and create a GitHub Release"
+        description: "create a GitHub Release"
         required: true
         default: true
         type: boolean
-      play_track:
-        description: "Google Play track"
-        required: true
-        default: alpha
-        type: choice
-        options:
-          - internal
-          - alpha
-          - beta
-          - production
+      # play_track:
+      #   description: "Google Play track"
+      #   required: true
+      #   default: alpha
+      #   type: choice
+      #   options:
+      #     - internal
+      #     - alpha
+      #     - beta
+      #     - production
 
 permissions:
   contents: write
@@ -206,13 +206,13 @@ jobs:
       #   run: submodules/flutter/bin/flutter test
       #   continue-on-error: true
 
-      - name: Build AAB
-        env:
-          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: submodules/flutter/bin/flutter build appbundle --release
+      # - name: Build AAB
+      #   env:
+      #     KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+      #     STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      #     KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      #     KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      #   run: submodules/flutter/bin/flutter build appbundle --release
 
       - name: Build APKs
         env:
