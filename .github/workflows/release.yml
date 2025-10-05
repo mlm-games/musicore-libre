@@ -206,13 +206,13 @@ jobs:
       #   run: submodules/flutter/bin/flutter test
       #   continue-on-error: true
 
-      # - name: Build AAB
-      #   env:
-      #     KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
-      #     STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-      #     KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      #     KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      #   run: submodules/flutter/bin/flutter build appbundle --release
+      - name: Build AAB
+        env:
+          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: submodules/flutter/bin/flutter build appbundle --release
 
       - name: Build APKs
         env:
